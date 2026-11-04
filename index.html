@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<style>:root{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>H3 权重编辑实验</title>
+<meta name="description" content="MiniMax-H3 的两组实验：生成视频上的三种编辑（代码改光照、代码把猫换成柯基、改权重），以及改 H3 VAE 编码器和解码器让它直接输出深度。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* layout: one reading column; each experiment = method notes, a synced video grid, a numbers table, a conclusion note */
+:root {
+  --bg: #f5f4f1;          /* page */
+  --surface: #ffffff;     /* panels */
+  --ink: #1d1e20;         /* text */
+  --ink-2: #55585e;       /* secondary text */
+  --rule: #dcd9d2;        /* hairlines */
+  --lamp: #a8620f;        /* accent: the warm lamp of video A */
+  --lamp-weak: #f6e7d2;
+  --slate: #3c5670;       /* secondary: the slate sofa / ambient light */
+  --good: #2f6b3f;
+  --good-weak: #e1efe4;
+  --warn: #8a5a00;
+  --warn-weak: #f8ecd2;
+  --display: "Noto Serif SC", "Songti SC", "STSong", serif;
+  --body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --pc-bg: #1f2226;       /* point-cloud stage: dark in both themes so RGB points read well */
+  --pc-ink: #f1efe9;
+  --pc-chip: #00000066;
+  --pc-path: #e2a54d;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141516; --surface: #1c1e20; --ink: #eceae6; --ink-2: #a7aab0; --rule: #34363a;
+    --lamp: #e2a54d; --lamp-weak: #3a2c18; --slate: #8fb0cf; --good: #7cc48e; --good-weak: #1f3326;
+    --warn: #e6b25a; --warn-weak: #3a2f17; --pc-bg: #0e0f11; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141516; --surface: #1c1e20; --ink: #eceae6; --ink-2: #a7aab0; --rule: #34363a;
+  --lamp: #e2a54d; --lamp-weak: #3a2c18; --slate: #8fb0cf; --good: #7cc48e; --good-weak: #1f3326;
+  --warn: #e6b25a; --warn-weak: #3a2f17; --pc-bg: #0e0f11; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.75; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 72px; }
+h1, h2 { font-family: var(--display); text-wrap: balance; letter-spacing: 0.01em; }
+h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.25; margin: 0 0 8px; }
+h2 { font-size: 22px; margin: 0 0 6px; }
+h3 { font-size: 16px; margin: 18px 0 6px; }
+.lede { color: var(--ink-2); max-width: 70ch; margin: 0; }
+.eyebrow { font-size: 12px; letter-spacing: 0.12em; color: var(--lamp); font-weight: 700; margin-bottom: 6px; }
+section { border-top: 1px solid var(--rule); padding-block: 28px 8px; margin-top: 28px; }
+p, li { max-width: 78ch; }
+ul.steps { padding-left: 1.2em; margin: 6px 0; }
+ul.steps li { margin: 3px 0; }
+code, .num { font-family: var(--mono); font-size: 0.92em; }
+.num { font-variant-numeric: tabular-nums; }
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 22px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.card h3 { margin: 0 0 4px; font-size: 15px; }
+.card p { margin: 0; color: var(--ink-2); font-size: 14px; }
+.chip { display: inline-block; font-size: 12px; padding: 1px 9px; border-radius: 999px; margin-right: 6px; font-weight: 500; }
+.chip.ok { background: var(--good-weak); color: var(--good); }
+.chip.part { background: var(--warn-weak); color: var(--warn); }
+.grid { display: grid; gap: 12px; margin-top: 12px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.g4 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+figure { margin: 0; min-width: 0; }
+figure video { width: 100%; max-width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 6px; background: #000; }
+figcaption { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
+figcaption b { color: var(--ink); font-weight: 600; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+button { font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--lamp); color: var(--lamp); }
+button:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+.bar span { font-size: 13px; color: var(--ink-2); }
+.tbl { overflow-x: auto; margin-top: 12px; }
+table { border-collapse: collapse; font-size: 13.5px; min-width: 560px; width: 100%; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--rule); text-align: right; white-space: nowrap; }
+th { color: var(--ink-2); font-weight: 500; font-size: 12.5px; }
+td:first-child, th:first-child { text-align: left; }
+td.hl { color: var(--lamp); font-weight: 600; }
+.note { background: var(--lamp-weak); border-radius: 8px; padding: 10px 14px; margin-top: 14px; }
+.note b { color: var(--lamp); }
+details { margin-top: 10px; }
+summary { cursor: pointer; color: var(--slate); font-size: 14px; }
+pre { white-space: pre-wrap; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px; font-size: 12.5px; line-height: 1.6; font-family: var(--mono); }
+.method { color: var(--ink-2); font-size: 14px; }
+.method b { color: var(--ink); }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 4px; border-bottom: 1px solid var(--rule); padding-bottom: 10px; }
+.tabs button { font-size: 14px; padding: 6px 14px; }
+.tabs button[aria-selected="true"] { background: var(--lamp); border-color: var(--lamp); color: var(--surface); }
+.status { font-size: 13.5px; color: var(--ink-2); margin: 12px 0 0; }
+ol.log { list-style: none; padding: 0; margin: 10px 0 0; border-left: 2px solid var(--rule); }
+ol.log li { position: relative; padding: 4px 0 8px 16px; max-width: 86ch; }
+ol.log li::before { content: ""; position: absolute; left: -6px; top: 13px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--lamp); }
+ol.log li.pending::before { border-color: var(--warn); background: var(--warn-weak); }
+ol.log time { font-family: var(--mono); font-size: 12.5px; color: var(--lamp); margin-right: 10px; font-variant-numeric: tabular-nums; }
+.tri { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+@media (max-width: 720px) { .tri { grid-template-columns: 1fr; } }
+figure video.r43 { aspect-ratio: 4 / 3; }
+figure video.r74 { aspect-ratio: 7 / 4; }
+.legend { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); }
+.legend .ramp { width: 150px; height: 10px; border-radius: 3px; }
+.ramp.turbo { background: linear-gradient(90deg, #7a0403, #d23105 12%, #fb8022 25%, #edd03a 38%, #a2fc3c 50%, #2ef19f 60%, #1ae4b6 64%, #28bceb 72%, #4686fb 82%, #30123b); }
+.ramp.err { background: linear-gradient(90deg, #4d453f, #9e4d1a 35%, #ed8c2e 70%, #ffdb8c); }
+.pcwrap { margin-top: 14px; }
+.pc { position: relative; border-radius: 8px; overflow: hidden; background: var(--pc-bg); aspect-ratio: 2 / 1; }
+.pc.stack { aspect-ratio: 3 / 4; }
+.pc canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.pc .lab { position: absolute; top: 10px; font-size: 12.5px; color: var(--pc-ink); background: var(--pc-chip); padding: 1px 9px; border-radius: 999px; pointer-events: none; }
+.pc .lab.a { left: 10px; }
+.pc .lab.b { left: calc(50% + 10px); }
+.pc.stack .lab.b { left: 10px; top: calc(50% + 10px); }
+.pc .pc-msg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--pc-ink); font-size: 14px; padding-inline: 16px; text-align: center; }
+.pcbar label { font-size: 13px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
+.pcbar input[type=range] { width: 110px; accent-color: var(--lamp); }
+button[aria-pressed="true"] { background: var(--lamp); border-color: var(--lamp); color: var(--surface); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">MINIMAX-H3 · 实验记录与开发日志</div>
+  <h1>H3 权重编辑实验</h1>
+  <nav class="tabs" id="tabs" aria-label="子页面">
+    <button type="button" data-tab="edit" aria-selected="true">实验一 · 视频编辑</button>
+    <button type="button" data-tab="depth" aria-selected="false">实验二 · H3 VAE 直接输出深度</button>
+  </nav>
+  <div class="page" id="page-edit">
+  <p class="lede">先用原始 MiniMax-H3 生成一段视频 A（一只猫在客厅地板上玩毛线球，左侧一盏暖光灯照明），再用三种方式编辑它：直接用代码改光照（光源位置 B、光照强度 C）；用代码把猫换成柯基；修改 H3 权重的副本，用完全相同的 seed 和噪声推理，直接生成编辑后的视频。本页同时是这项研究的实验记录和开发日志，每完成一个实验就更新。</p>
+  <p class="status" id="status"><span class="chip ok">全部完成</span>三项任务都已完成，包括用权重编辑在保持场景的前提下移动光源（改视频输出头）　·　最近更新 2026-11-03 18:55（北京时间）</p>
+
+  <div class="summary">
+    <div class="card"><h3><span class="chip ok">完成</span>代码改光照</h3><p>C（强度）自然；B（光源移到右侧）方向正确，影子改朝左，但物体周围有光晕、猫偏暗。内容、动作与 A 完全一致。</p></div>
+    <div class="card"><h3><span class="chip ok">完成</span>代码把猫换成柯基</h3><p>只重画猫所在区域（掩码外像素与 A 一致），σ₀=0.95 时得到清楚的柯基，沿着原来的动作玩同一个毛线球。</p></div>
+    <div class="card"><h3><span class="chip ok">完成</span>改权重（副本）</h3><p>不改权重时与 A 逐比特一致。改文本输入层：三个编辑在语义上都生效，光照强度、柯基两项的场景基本保持，但光源位置会换场景。光源位置改用另一种做法：改视频输出头，平移 A 的去噪轨迹，同 seed、同噪声直接得到场景不变、光从右来的视频。</p></div>
+  </div>
+
+  <section id="setup">
+    <h2>视频 A：生成设置</h2>
+    <ul class="steps method">
+      <li><b>模型</b> 原始 MiniMax-H3（T2VA，官方 diffusers 模块化流程），1344×768，124 帧，24 fps，带立体声音频；官方蒸馏后的 50 点采样（49 次前向），无 CFG。</li>
+      <li><b>固定随机性</b> seed 42；视频噪声 <code>[1,24,37,48,84]</code> 和音频噪声 <code>[2,32,207]</code> 抽一次后存盘，后面所有推理都读这两份张量。</li>
+      <li><b>提示词</b> 按 H3 自己的格式（画面 / 声音 / 配乐三段）：一只橘色虎斑猫、毛线球互动、沙发、绿植、书架；光源写明“左侧画外一盏昏暗的暖光灯，影子向右延伸”。</li>
+    </ul>
+    <details><summary>完整提示词</summary>
+<pre>integrated_multimodal_description: [Shot 1] Live-action, cinematic, a static medium-wide shot at floor level in a cozy living room at night. A fluffy orange tabby cat plays on a light oak wooden floor with a red ball of yarn. The only light comes from a dim warm lamp just out of frame on the left, which casts a soft pool of golden light across the floor and long shadows that stretch to the right, while the far corners of the room fall into darkness. Behind the tabby cat stand a grey fabric sofa, a small wooden side table with a green potted plant, and a tall bookshelf. The tabby cat crouches low, bats the red ball of yarn with its front paw, watches it roll a short distance away, then pounces on it and rolls onto its side, holding the yarn with all four paws. The camera holds perfectly still throughout the shot.
+
+overall_soundscape: Quiet indoor room tone, the soft patter of paws on the wooden floor, and the faint rustle of the yarn ball rolling across the boards.
+
+non_diegetic_music: None.</pre></details>
+    <div class="grid g2">
+      <figure><video src="videos/A_seed42.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>视频 A</b> · 原始权重</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="relight">
+    <h2>编辑一：用代码改光照（B 光源位置，C 光照强度）</h2>
+    <h3>做了什么</h3>
+    <ul class="steps method">
+      <li><b>拆光照层</b> 用 Marigold 本征分解（光照版）把每帧拆成反照率 × 漫反射光照；静止像素取全片中值，每帧先对齐尺度，避免闪烁。</li>
+      <li><b>分出直射光</b> 在对数光照上用 Otsu 阈值分出背光像素，平滑插值得到环境光图；直射光 = 光照 − 环境光。</li>
+      <li><b>几何</b> VGGT-Ω 估计深度和相机内参，得到法线；屏幕空间光线步进计算投影。光源方向由“直射光层 vs 法线×投影”的相关性搜索得到：从左侧、仰角 25°、略偏向镜头。</li>
+      <li><b>B</b> 光源方向左右镜像，新的直射光 = 朝向 × 投影 × 左右镜像后的光斑轮廓，再用原图做引导滤波，让光的边缘贴合物体轮廓。<b>C</b> 直射光 ×2.2。两者都在线性 RGB 中按“新光照 / 旧光照”逐像素缩放；内容、动作和音频与 A 相同。</li>
+    </ul>
+    <div class="grid g3" data-group="relight">
+      <figure><video src="videos/A_seed42.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>A</b> · 光从左侧来</figcaption></figure>
+      <figure><video src="videos/B_light_position.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>B</b> · 光源移到右侧</figcaption></figure>
+      <figure><video src="videos/C_light_intensity.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>C</b> · 光照增强 2.2 倍</figcaption></figure>
+    </div>
+    <div class="bar"><button type="button" data-play="relight">同步播放</button><button type="button" data-pause="relight">暂停</button><span>三段从第一帧同时开始</span></div>
+    <div class="tbl"><table>
+      <tr><th>视频</th><th>左右亮度平衡</th><th>平均亮度 / A</th><th>最亮 5% / A</th><th>与 A 的 SSIM</th></tr>
+      <tr><td>A</td><td class="num">−0.48</td><td class="num">1.00</td><td class="num">1.00</td><td class="num">1.000</td></tr>
+      <tr><td>B 代码：光源位置</td><td class="num hl">+0.26</td><td class="num">1.16</td><td class="num">0.77</td><td class="num">0.38</td></tr>
+      <tr><td>C 代码：光照强度</td><td class="num">−0.51</td><td class="num hl">1.86</td><td class="num hl">2.06</td><td class="num">0.93</td></tr>
+    </table></div>
+    <p class="method">左右亮度平衡 =（右半边平均亮度 − 左半边）/ 两者之和，在线性亮度上计算；负数表示光从左边来。SSIM 在 8 倍下采样的灰度图上计算。</p>
+    <div class="note"><b>结论</b> C 很自然：光束更亮、影子更硬，物体和动作与 A 完全相同（SSIM 0.93）。B 的光确实换到了右侧：左右平衡从 −0.48 变为 +0.26，猫和毛线球的影子改朝左，右侧书架、边桌和地板被照亮，旧影子被去掉。不足是物体边缘有光晕、猫偏暗，原因是单目深度和本征分解都只是近似。前后迭代了四版：单点光源拟合只能解释 18% 的亮度变化，手写规则分割墙面和地板也不稳定，改用学习到的本征分解后才可用。</div>
+  </section>
+
+  <section id="corgi">
+    <h2>编辑二：用代码把猫换成柯基</h2>
+    <h3>做了什么</h3>
+    <ul class="steps method">
+      <li><b>找到猫</b> OWLv2 开放词表检测“a cat”得到框，SAM 2.1 视频分割沿全片跟踪，得到每帧掩码（占画面 4–6%，没有空帧）。</li>
+      <li><b>只重画猫的区域</b> 把视频 A（读 mp4 文件本身）用 H3 VAE 编码成 latent，掩码膨胀 48 像素后映射到 latent 网格。从噪声水平 σ₀ 开始，用原始 H3 权重和“把 tabby cat 换成 corgi”的提示词去噪（噪声同样用 seed 42 那份）；每一步都把掩码外的 latent 重置为 A 的加噪版本，音频保持 A。</li>
+      <li><b>合成</b> 解码后在像素上与 A 合成：掩码外直接用 A 的像素（最大差异 ≤2 个灰度级），音轨照搬 A。</li>
+    </ul>
+    <div class="grid g4" data-group="corgi">
+      <figure><video src="videos/cat_mask_overlay.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>猫的掩码</b> · OWLv2 + SAM 2.1</figcaption></figure>
+      <figure><video src="videos/A_seed42.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>A</b></figcaption></figure>
+      <figure><video src="videos/corgi_code_s095.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>柯基</b> · σ₀ = 0.95（30 步）</figcaption></figure>
+      <figure><video src="videos/corgi_code_s085.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>柯基</b> · σ₀ = 0.85（15 步）</figcaption></figure>
+    </div>
+    <div class="bar"><button type="button" data-play="corgi">同步播放</button><button type="button" data-pause="corgi">暂停</button></div>
+    <div class="tbl"><table>
+      <tr><th>视频</th><th>OWLv2：猫</th><th>OWLv2：柯基</th><th>OWLv2：狗</th><th>与 A 的 SSIM</th><th>掩码外最大像素差</th></tr>
+      <tr><td>A</td><td class="num">0.69</td><td class="num">0.05</td><td class="num">0.04</td><td class="num">1.000</td><td class="num">0</td></tr>
+      <tr><td>柯基 σ₀ = 0.95</td><td class="num">0.22</td><td class="num hl">0.58</td><td class="num">0.57</td><td class="num">0.93</td><td class="num">2</td></tr>
+      <tr><td>柯基 σ₀ = 0.85</td><td class="num">0.33</td><td class="num">0.40</td><td class="num">0.54</td><td class="num">0.985</td><td class="num">1</td></tr>
+    </table></div>
+    <p class="method">OWLv2 分数：每段均匀取 16 帧，对“a cat / a corgi / a dog”三个查询取每帧最高的检测分数，再求平均。</p>
+    <div class="note"><b>结论</b> σ₀ = 0.95 时猫被换成了清楚的柯基（橘白毛色、立耳、白胸口），沿着猫原来的动作扑同一个毛线球，房间、光照和影子完全不变。σ₀ = 0.85 时噪声不够，大体还是猫，只有脸部带一点柯基特征：改变动物种类需要几乎从纯噪声开始重画掩码区域。</div>
+  </section>
+
+  <section id="weights">
+    <h2>编辑三：修改 H3 权重（在副本上），同样的 seed 和噪声</h2>
+    <h3>做了什么</h3>
+    <ul class="steps method">
+      <li><b>副本</b> 原始权重只读，不做任何改动。把 transformer（16 个文件）复制一份，sha256 全部一致；用未改动的副本、同样的 seed 和噪声推理，结果与 A 逐比特相同（画面、latent、音频都一致）。</li>
+      <li><b>只改一层</b> <code>context_embedder</code> 是 Qwen3-VL 文本状态（5120 维）进入 H3 的第一层（线性层，5120→5376），视频通路的权重一概不动。按 ROME / MEMIT 的闭式最小干扰更新求权重改动：让视频 A 提示词的每个 token 在这一层的输出，精确等于编辑后提示词对应 token 的输出；同时以 200 条无关提示词（14,550 个 token）的协方差为度量，使改动最小。编辑后的提示词与 A 的 token 数相同（例如 “tabby cat” 和 “corgi” 都是 3 个 token），因此可以逐 token 对应。</li>
+      <li><b>保存</b> 每个编辑存成一个完整、可直接加载的权重目录：重写 <code>context_embedder</code> 所在的分片，其余 13 个分片与副本硬链接，字节完全相同。</li>
+    </ul>
+    <div class="tbl"><table>
+      <tr><th>编辑</th><th>替换的词</th><th>权重改动 ‖ΔW‖/‖W‖</th><th>A 的 token 与目标的偏差（编辑前 → 后）</th><th>200 条无关提示词的输出变化（中位数 / p99）</th></tr>
+      <tr><td>B 光源位置</td><td>left → right，影子 right → left</td><td class="num">4.5%</td><td class="num">34% → 0.19%</td><td class="num">0.23% / 1.0%</td></tr>
+      <tr><td>C 光照强度</td><td>dim → bright，soft → strong</td><td class="num">11.2%</td><td class="num">75% → 0.21%</td><td class="num">0.63% / 2.5%</td></tr>
+      <tr><td>柯基</td><td>tabby cat → corgi（3 处）</td><td class="num">14.0%</td><td class="num">102% → 0.21%</td><td class="num">0.81% / 3.2%</td></tr>
+    </table></div>
+    <p class="method">“偏差”= ‖这一层在 A 的 token 上的输出 − 编辑后提示词对应 token 的输出‖ / ‖后者‖，取所有 token 的最大值；编辑后只剩 bf16 舍入误差。</p>
+    <div class="grid g4" data-group="weights">
+      <figure><video src="videos/A_copy_seed42.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>副本，未编辑</b> · 与 A 逐比特相同</figcaption></figure>
+      <figure><video src="videos/B_weights.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>B 权重编辑</b> · 光源位置</figcaption></figure>
+      <figure><video src="videos/C_weights.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>C 权重编辑</b> · 光照强度</figcaption></figure>
+      <figure><video src="videos/corgi_weights.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>柯基 权重编辑</b></figcaption></figure>
+    </div>
+    <div class="bar"><button type="button" data-play="weights">同步播放</button><button type="button" data-pause="weights">暂停</button></div>
+    <div class="tbl"><table>
+      <tr><th>视频（同一 seed、同一噪声）</th><th>左右亮度平衡</th><th>平均亮度 / A</th><th>OWLv2：猫 / 柯基</th><th>与 A 的 SSIM</th></tr>
+      <tr><td>副本，未编辑</td><td class="num">−0.48</td><td class="num">1.00</td><td class="num">0.69 / 0.05</td><td class="num">1.000</td></tr>
+      <tr><td>B 权重编辑</td><td class="num hl">+0.39</td><td class="num">0.99</td><td class="num">0.69 / 0.06</td><td class="num">0.33</td></tr>
+      <tr><td>C 权重编辑</td><td class="num">−0.43</td><td class="num hl">1.40</td><td class="num">0.69 / 0.03</td><td class="num">0.27</td></tr>
+      <tr><td>柯基 权重编辑</td><td class="num">−0.48</td><td class="num">1.05</td><td class="num hl">0.12 / 0.56</td><td class="num">0.68</td></tr>
+    </table></div>
+    <div class="note"><b>结论</b> 三个编辑在语义上都生效了：B 光改从右侧来、影子朝左；C 整体变成明亮的暖光；柯基清楚可辨。但场景是重新生成的：B、C 的房间布局和猫的动作都变了（SSIM 0.33 / 0.27），柯基那一项的布局、光照和动作最接近 A（SSIM 0.68）。原因是这一层的编辑在数学上等价于直接改提示词：H3 在同一份噪声下对文本条件很敏感，第一步起去噪轨迹就分开了，所以“改权重”只能做到语义编辑，做不到像素级保持。</div>
+    <h3>补充：改视频输出头，保持场景地实现 B（成功）</h3>
+    <p class="method">目标：改权重后，用视频 A 的提示词和 seed-42 噪声直接推理出“只换了光源位置”的视频。做法基于一个性质：H3 的 Euler 采样是 x<sub>i+1</sub> = x<sub>i</sub> + (σ<sub>i</sub> − σ<sub>i+1</sub>) v<sub>i</sub>。把视频 A 自己的去噪轨迹整体平移成 x<sup>B</sup><sub>i</sub> = x<sup>A</sup><sub>i</sub> + t<sub>i</sub>·Δ（Δ = 代码版视频 B 与 A 的 latent 之差），只要每一步的速度是 v<sup>A</sup><sub>i</sub> + Δ，采样就沿这条轨迹走，最后落在 A 的 latent + Δ；布局和动作来自 A 的轨迹，所以场景不变。具体做法：沿 A 的轨迹，在每一步的平移点上用原模型多跑一次前向，记下视频输出头 <code>proj_out</code> 的输入（每个视频 token 5376 维）和所需的速度修正；用岭回归（49 步 × 37,296 个 token）解出一个线性修正，加到 <code>proj_out</code> 的权重上。只改这一层（fp32），其余权重与副本相同。</p>
+    <div class="grid g3" data-group="head">
+      <figure><video src="videos/A_seed42.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>A</b></figcaption></figure>
+      <figure><video src="videos/B_light_position.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>目标</b> · 代码编辑的视频 B</figcaption></figure>
+      <figure><video src="videos/B_weights_head.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>改输出头后的权重</b> · 同 seed、同噪声</figcaption></figure>
+    </div>
+    <div class="bar"><button type="button" data-play="head">同步播放</button><button type="button" data-pause="head">暂停</button></div>
+    <div class="tbl"><table>
+      <tr><th>B 的权重编辑方式</th><th>左右亮度平衡（A 为 −0.48）</th><th>与 A 的 SSIM</th><th>与代码版 B 的 SSIM / PSNR</th></tr>
+      <tr><td>改文本输入层（等价于改提示词）</td><td class="num">+0.39</td><td class="num">0.33</td><td class="num">—</td></tr>
+      <tr><td>改视频输出头（平移 A 的轨迹）</td><td class="num hl">+0.21</td><td class="num hl">0.50</td><td class="num">0.65 / 21.4 dB</td></tr>
+      <tr><td>代码编辑（参照）</td><td class="num">+0.26</td><td class="num">0.38</td><td class="num">1 / ∞</td></tr>
+    </table></div>
+    <div class="note"><b>结论</b> 用改过 <code>proj_out</code> 的权重、同样的 seed 和噪声推理，得到的视频保持了 A 的房间布局、猫的位置和动作，光源从左移到了右（左右亮度平衡 −0.48 → +0.21，代码版为 +0.26）。左侧变暗，旧的地板光斑消失，右侧变亮。不足是画面偏虚、猫有轻微重影：线性修正只解释了所需修正的 61%（岭回归训练集 R²），而且这一层的改动相对原权重很大（Frobenius 范数之比 17.6）。这类编辑本质上是针对这一个请求的，不是通用的“光从右边来”的语义编辑。</div>
+    <h3>补充：把代码编辑的视频 B 蒸馏进权重（失败）</h3>
+    <p class="method">为了让“改权重后，同样的 seed 和噪声直接推理出视频 B（场景不变、只换光源位置）”，在副本上给 50 个 block 的注意力投影加 LoRA（秩 16），训练它在视频 A 的提示词和 seed-42 噪声下，沿着从这份噪声指向视频 B latent 的直线去噪：只要模型在这 49 个时间点上都预测出速度 z_B − ε，H3 的 Euler 采样就会精确落到视频 B。受时限约束，只训练了 42 步（学习率 1e-3，约 28 分钟），然后把 LoRA 合并进副本，存成完整的权重目录，再用同样的 seed 和噪声推理。</p>
+    <div class="grid g3" data-group="distill">
+      <figure><video src="videos/A_seed42.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>A</b></figcaption></figure>
+      <figure><video src="videos/B_light_position.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>目标</b> · 代码编辑的视频 B</figcaption></figure>
+      <figure><video src="videos/B_weights_distill.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>蒸馏后的权重</b> · 42 步</figcaption></figure>
+    </div>
+    <div class="bar"><button type="button" data-play="distill">同步播放</button><button type="button" data-pause="distill">暂停</button></div>
+    <div class="note"><b>结论</b> 失败：推理出的是一个昏暗、几乎静止的错乱画面（与 A 的 SSIM 0.21，与目标 B 的 SSIM 0.16）。权重改动本身很小（每个投影中位数 0.28%，最大 1.1%），但 42 步、学习率 1e-3 的 Adam 更新基本是类噪声的扰动，损失没有明显下降，采样时误差逐步累积，生成就崩了。要做成需要更小的学习率（约 1e-4）、多得多的步数，并在训练中途用同样的噪声实际采样检查，估计 1–2 小时，超出了本次时限。</div>
+    <h3>验证：这一层的权重编辑等于改提示词吗？</h3>
+    <p class="method">原始权重 + 柯基提示词 + 同一份噪声，与“编辑后的权重 + 视频 A 的提示词”对比。</p>
+    <div class="grid g2" data-group="equiv">
+      <figure><video src="videos/corgi_weights.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>编辑后的权重</b> + 视频 A 的提示词</figcaption></figure>
+      <figure><video src="videos/corgi_prompt_orig.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>原始权重</b> + 柯基提示词</figcaption></figure>
+    </div>
+    <div class="bar"><button type="button" data-play="equiv">同步播放</button><button type="button" data-pause="equiv">暂停</button></div>
+    <div class="note"><b>结论</b> 两段几乎是同一个视频：同一只柯基、同一个房间、同样的动作，只有细节不同（PSNR 25.6 dB；它们与 A 之间只有 19 dB 左右）。不逐比特相同，是因为编辑后的权重存成 bf16 时文本输出有约 0.2% 的舍入误差，经过 49 步去噪后略有放大。这证实了这一层的权重编辑在效果上等价于修改提示词。</div>
+    <div id="local">
+      <h3>补充：只改被替换词的 token（局部编辑）</h3>
+      <p class="method">同样的闭式更新，但只让被替换的词（B 的 left/right、C 的 dim/bright 和 soft/strong、柯基的 3 处 tabby cat）在这一层的输出变成目标值，提示词里其余 token 的输出保持与 A 完全相同。想验证：如果上下文 token 不变，生成的场景能否更接近 A。</p>
+      <div class="grid g4" data-group="local">
+        <figure><video src="videos/A_seed42.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>A</b></figcaption></figure>
+        <figure><video src="videos/B_weights_local.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>B 局部编辑</b> · 只改 2 个 token</figcaption></figure>
+        <figure><video src="videos/C_weights_local.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>C 局部编辑</b> · 只改 2 个 token</figcaption></figure>
+        <figure><video src="videos/corgi_weights_local.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>柯基 局部编辑</b> · 只改 9 个 token</figcaption></figure>
+      </div>
+      <div class="bar"><button type="button" data-play="local">同步播放</button><button type="button" data-pause="local">暂停</button></div>
+      <div class="tbl"><table>
+        <tr><th>编辑</th><th>编辑效果（整段 → 局部）</th><th>与 A 的 SSIM：整段编辑</th><th>与 A 的 SSIM：局部编辑</th></tr>
+        <tr><td>B 光源位置</td><td class="num">左右平衡 +0.39 → +0.39</td><td class="num">0.33</td><td class="num">0.33</td></tr>
+        <tr><td>C 光照强度</td><td class="num">平均亮度 ×1.40 → ×1.32</td><td class="num">0.27</td><td class="num hl">0.77</td></tr>
+        <tr><td>柯基</td><td class="num">OWLv2 柯基 0.56 → 0.67</td><td class="num">0.68</td><td class="num">0.67</td></tr>
+      </table></div>
+      <div class="note"><b>结论</b> 局部化的效果因编辑而异。光照强度：局部编辑在变亮的同时基本保住了 A 的房间和猫的动作（SSIM 0.27 → 0.77），说明整段编辑时场景被换掉，主要是被替换词后面的上下文 token 带来的。光源位置：局部和整段生成了同一个新场景，“left → right” 这一个词本身就足以让去噪轨迹从第一步起分开。柯基：两者都得到柯基、场景接近 A，局部编辑的柯基分数更高（0.67）。</div>
+    </div>
+  </section>
+
+  <section id="next">
+    <h2>初步结论与下一步</h2>
+    <ul class="steps">
+      <li><b>保持原视频</b> 代码编辑（像素层面改光照、latent 层面修补）能完全保持 A 的内容和动作；权重编辑目前只能做到语义层面的编辑，场景会被重新生成。</li>
+      <li><b>编辑类型</b> 换物体（猫→柯基）三种方式都做得到；改光照时，代码编辑受几何和本征分解精度限制，权重编辑则会连带改变场景。</li>
+      <li><b>权重编辑怎样保持场景</b> 两种互补的做法。改文本输入层是语义编辑，对任意提示词都起作用，但改变构图的编辑（光源位置）会换场景。改视频输出头、平移 A 的去噪轨迹，能针对这个请求保持场景，但只适用于这一个请求。下一步：把输出头的线性修正换成更强的拟合（例如最后几层的低秩修正），减轻发虚；同时尝试“只在去噪后段生效”的语义编辑（放进随时间步变化的文本模态 AdaLN 调制里），兼顾通用性和场景保持。</li>
+      <li><b>下一步：代码编辑</b> 光照：用多帧一致的深度和法线，并在本征分解里显式建模投影。柯基：在 σ₀ 0.9–0.95 之间细扫，调整掩码膨胀大小。</li>
+    </ul>
+  </section>
+
+  <section id="log">
+    <h2>开发日志</h2>
+    <p class="method">北京时间 2026-11-03。代码和输出放在新建的独立目录里，不与 3D/4D 项目混放；原始 H3 权重只读。</p>
+    <ol class="log">
+      <li><time>15:26</time>新建独立目录；用官方文本编码器编码视频 A 和三条编辑后提示词（token 数都是 229），以及 200 条无关提示词（用于权重编辑的协方差）。后台开始复制 transformer 权重。</li>
+      <li><time>15:29</time>第一次生成报错：文本 token 标签放到了 GPU 上，与官方打包布局不一致。改为留在 CPU 后重跑。</li>
+      <li><time>15:41</time>视频 A 生成完成（seed 42，49 步，576 秒）：一只橘猫、红毛线球、左侧暖光，符合要求。</li>
+      <li><time>15:44</time>光照 v1：拟合单个点光源，只解释 18% 的亮度变化，移动光源后旧光去不掉，B 失败。</li>
+      <li><time>15:48</time>猫的分割完成（OWLv2 + SAM 2.1；第一次因 transformers 5 的接口改名报错，已修复）。</li>
+      <li><time>15:49</time>权重副本完成，16 个文件的 sha256 与原始权重全部一致。</li>
+      <li><time>15:51</time>光照 v2：按规则分割墙面和地板，再拟合方向光；墙面误把沙发和书架算进去，出现斑块，失败。</li>
+      <li><time>15:55</time>想安装 GitHub 上的本征分解代码，被权限策略拒绝；改用 diffusers 自带的 Marigold 本征分解（只下载模型权重）。</li>
+      <li><time>15:57</time>光照 v3：用 Marigold 的光照层，B 第一次可用（光从右来、影子朝左）。</li>
+      <li><time>16:00</time>未改动的权重副本 + 同一份噪声，生成结果与 A 逐比特一致。</li>
+      <li><time>16:01</time>三个权重编辑完成（闭式解，只改 context_embedder 一层）。</li>
+      <li><time>16:07</time>光照 v4–v7：Otsu 分出环境光、逐帧对齐光照尺度、在全分辨率上做除法（去掉旧影子的轮廓）、引导滤波（减轻光晕）。定稿为 v7。</li>
+      <li><time>16:12</time>B 权重编辑视频：光从右侧来，但场景被重新生成。<time>16:21</time>C：变亮，场景同样被重新生成。<time>16:30</time>柯基：柯基清楚，场景基本保持。</li>
+      <li><time>16:13</time>时间要求：2.5 小时内完成全部实验并给出初步结论，先跑通再打磨。</li>
+      <li><time>16:40</time>代码版柯基：σ₀ = 0.95 成功，0.85 不够。</li>
+      <li><time>16:42</time>统一评估：左右亮度平衡、亮度比、OWLv2 打分、与 A 的 SSIM。</li>
+      <li><time>16:53</time>局部权重编辑 B：与整段编辑几乎相同。</li>
+      <li><time>17:02</time>局部权重编辑 C：场景基本保持（SSIM 0.77，整段编辑只有 0.27），同时变亮。</li>
+      <li><time>17:11</time>局部权重编辑柯基：与整段编辑接近，柯基分数更高（0.67）。</li>
+      <li><time>17:27</time>验证“权重编辑 = 改提示词”：原始权重 + 柯基提示词 + 同一份噪声，与柯基权重编辑几乎是同一段视频（PSNR 25.6 dB），差别来自 bf16 舍入。</li>
+      <li><time>17:28</time>上述实验完成。</li>
+      <li><time>17:33</time>补做“把视频 B 蒸馏进权重”：LoRA 训练 28 分钟（42 步），18:06 合并进副本。</li>
+      <li><time>18:17</time>蒸馏后的权重推理失败（画面昏暗、错乱）。</li>
+      <li><time>18:22</time>改用闭式方法：沿视频 A 的去噪轨迹平移 t·Δ，用岭回归求视频输出头 <code>proj_out</code> 的修正（采集 49 步，约 16 分钟；训练集 R² 0.61）。</li>
+      <li><time>18:50</time>输出头编辑后的权重 + 同 seed、同噪声：场景保持，光源移到右侧（SSIM 0.50，左右亮度平衡 +0.21）。B 的权重编辑完成。</li>
+    </ol>
+  </section>
+  </div>
+
+  <div class="page" id="page-depth" hidden>
+    <p class="lede">目标：只改 H3 的 VAE（编码器 + 解码器，不用 DiT）的权重，让一段室内视频经过改后的编码器和解码器，直接输出与 VGGT-Ω 深度质量相当的深度图。深度是单通道的，所以解码器输出三通道相同的深度图像。要求是免训练：不做梯度下降、不微调，而是观察原模型的计算过程和想要的结果，直接算出新的权重。原始 VAE 权重只读，在副本上修改；先对一段 TartanAir 室内视频过拟合，再用多段视频一起求解，测试能否推广到没见过的视频。</p>
+    <p class="status" id="status2" data-updated="1"><span class="chip ok">任务 1–3 完成</span>逐层免训练编辑：同段求解时 TartanAir AbsRel 0.0081、漫游视频 A 0.0118（第一版 0.024 / 0.051）。<span class="chip ok">任务 4 完成</span>43 段联合求解在没见过的轨迹上对齐后 AbsRel 0.26–0.27、新环境 0.60–0.68，泛化有限；只在 office P000 上求解的权重换到 P003 后 AbsRel 0.37。<span class="chip part">待决定</span>只用 VGGT-Ω 权重、不看它输出的可泛化改法：可行性分析完成，结构不变时做不到，见最后一节　·　最近更新 2026-11-04 10:16（北京时间）</p>
+
+    <section id="d-tf">
+      <h2>免训练：闭式修改 VAE 权重（TartanAir office）</h2>
+      <p class="method">整个过程只有三步：用原模型跑一遍、记下某一层的输入和我们希望它输出的东西，解一个带正则的最小二乘（线性方程组），把解直接写成这一层的新权重。没有梯度、没有迭代训练。下图里带 ✎ 的是被改写的层，其余约 26 亿个参数不动。</p>
+      <pre class="mermaid">
+flowchart LR
+  rgb["RGB 视频"] --> enc["编码器 3D CNN<br/>原权重"]
+  enc --> co["conv_out ✎<br/>RGB 特征 → 深度图的 latent"]
+  co --> z["latent ≈ z_D"]
+  z --> dec["解码器 ViT 36 层<br/>原权重"]
+  dec --> po["proj_out ✎<br/>隐状态 → 深度像素块"]
+  po --> out["三通道深度图"]
+  dep["深度图（VGGT-Ω）"] -. 原 VAE 编码 .-> zd["z_D：编辑 1 的目标"]
+  zd -.-> co
+  dep -. 切成 16×16 像素块 .-> po
+</pre>
+      <ul class="steps method">
+        <li><b>输入和目标</b> TartanAir office / Easy / P000 第 0–123 帧（640×480，室内，相机移动）；目标是 VGGT-Ω 在这段视频上的深度 B（384×512，全部帧共用一个尺度）。深度图像 u = (log d − log d<sub>1%</sub>) / (log d<sub>99%</sub> − log d<sub>1%</sub>)，截断到 [0, 1]，复制到三个通道。</li>
+        <li><b>观察 1</b> 原始 VAE 能几乎无损地编解码深度图像本身：把 u 当作视频送进原编码器、原解码器，读回的深度与 B 只差 1.3%（AbsRel）。也就是说，存在一个 latent z<sub>D</sub>，原解码器会把它画成正确的深度图。所以要改的，主要是编码器的输出：看到 RGB 时，输出 z<sub>D</sub>。</li>
+        <li><b>编辑 1：编码器输出层</b> 按官方分块编码的顺序，记录编码器最后一层的输入特征（每个 latent 位置的 3×3×3 邻域，共 27×1024 维，正是原 <code>conv_out</code> 的感受野），以及深度图像的 latent 均值 z<sub>D</sub>。用岭回归一次解出新的 <code>conv_out</code> 卷积核（均值通道）；方差通道等于原 <code>quant_conv ∘ conv_out</code> 的精确合成，<code>quant_conv</code> 改为恒等。拟合 R² = 0.968。</li>
+        <li><b>编辑 2：解码器输出头</b> 用编辑后的 latent 走一遍官方解码，记录解码器最后的隐状态（每个 token 2048 维），和目标深度图中对应的 3 通道 × 4 帧 × 16×16 像素块配对，用岭回归一次解出新的 <code>proj_out</code>（2048→3072）。拟合 R² = 0.997。</li>
+        <li><b>改动范围</b> 只改了 3 个张量：<code>encoder.conv_out</code>、<code>quant_conv</code>、<code>decoder.proj_out</code>；其余权重与副本完全相同。整个过程约 1 分钟（两次前向记录 + 两次线性方程求解），没有任何训练。</li>
+      </ul>
+      <div class="grid g2" data-group="dtf">
+        <figure><video src="videos/tartan_tf27_A_B_H3vae_side_by_side.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>左</b> TartanAir 输入　<b>中</b> VGGT-Ω 深度 B　<b>右</b> 改后的 H3 VAE 直接输出的深度</figcaption></figure>
+        <figure><video src="videos/tartan_tf_A_B_H3vae_side_by_side.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>对照</b> 编辑 1 只用当前位置的 1024 维特征时（右侧有马赛克和地砖纹理）</figcaption></figure>
+      </div>
+      <div class="bar"><button type="button" data-play="dtf">同步播放</button><button type="button" data-pause="dtf">暂停</button></div>
+      <div class="tbl"><table>
+        <tr><th>官方编解码流程，与深度 B 比</th><th>AbsRel</th><th>δ1</th><th>误差 &lt;5% 的像素</th><th>深度图像 PSNR</th><th>三通道差异</th></tr>
+        <tr><td>原始 VAE（重建的是 RGB，只作参照）</td><td class="num">2.08</td><td class="num">0.123</td><td class="num">2.7%</td><td class="num">6.7 dB</td><td class="num">0.060</td></tr>
+        <tr><td>上限：原始 VAE 直接编解码深度图像本身</td><td class="num">0.013</td><td class="num">0.993</td><td class="num">98.2%</td><td class="num">45.5 dB</td><td class="num">0.002</td></tr>
+        <tr><td>编辑 1（只用当前位置特征，R² 0.84）</td><td class="num">0.094</td><td class="num">0.930</td><td class="num">35.4%</td><td class="num">26.9 dB</td><td class="num">0.004</td></tr>
+        <tr><td>编辑 1 + 2（只用当前位置特征）</td><td class="num">0.063</td><td class="num">0.977</td><td class="num">51.5%</td><td class="num">30.5 dB</td><td class="num">0.0004</td></tr>
+        <tr><td>编辑 1（3×3×3 邻域，R² 0.968）</td><td class="num">0.031</td><td class="num">0.991</td><td class="num">83.5%</td><td class="num">36.7 dB</td><td class="num">0.003</td></tr>
+        <tr><td><b>编辑 1 + 2（3×3×3 邻域）</b></td><td class="num hl">0.024</td><td class="num hl">0.992</td><td class="num hl">92.0%</td><td class="num hl">39.3 dB</td><td class="num">0.0003</td></tr>
+      </table></div>
+      <p class="method">评估：TartanAir 视频走官方的完整编解码流程（编码取后验均值，按官方方式分块、混合），输出三通道的均值读回深度，与上采样到 640×480 的深度 B 逐像素比较。AbsRel = |预测 − B| / B 的平均；δ1 = 误差在 1.25 倍以内的像素比例。</p>
+      <h3>同一方法用在 H3 生成的漫游视频 A 上</h3>
+      <p class="method">按最初的设定，输入换成 H3 生成的室内漫游视频 A（1344×768，124 帧），目标是 VGGT-Ω 在 A 上的深度 B；方法和参数与上面完全相同，从未改动的 VAE 副本出发，单独做一次闭式编辑（约 3 分钟）。</p>
+      <div class="grid g2" data-group="dtfwalk">
+        <figure><video src="videos/walk_tf27_sbs_half.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>左</b> 漫游视频 A　<b>中</b> VGGT-Ω 深度 B　<b>右</b> 免训练修改后的 H3 VAE 输出的深度</figcaption></figure>
+      </div>
+      <div class="bar"><button type="button" data-play="dtfwalk">同步播放</button><button type="button" data-pause="dtfwalk">暂停</button></div>
+      <div class="tbl"><table>
+        <tr><th>与 VGGT-Ω 深度 B 比</th><th>TartanAir office（640×480）</th><th>漫游视频 A（1344×768）</th></tr>
+        <tr><td>上限：原 VAE 直接编解码深度图像</td><td class="num">0.013</td><td class="num">0.010</td></tr>
+        <tr><td>编辑 1 的拟合 R²（3×3×3 邻域）</td><td class="num">0.968</td><td class="num">0.876</td></tr>
+        <tr><td>编辑 1 + 2：AbsRel</td><td class="num hl">0.024</td><td class="num hl">0.051</td></tr>
+        <tr><td>编辑 1 + 2：δ1</td><td class="num">0.992</td><td class="num">0.987</td></tr>
+        <tr><td>编辑 1 + 2：误差 &lt;5% 的像素</td><td class="num">92.0%</td><td class="num">61.7%</td></tr>
+        <tr><td>编辑 1 + 2：深度图像 PSNR</td><td class="num">39.3 dB</td><td class="num">29.9 dB</td></tr>
+      </table></div>
+      <div class="note"><b>结论</b> 不做任何训练，只按“记录激活 → 解线性方程 → 写入权重”改了 VAE 的 3 个张量，H3 VAE 就把这段 TartanAir 视频直接“编解码”成了深度图：与 VGGT-Ω 的深度只差 2.4%（AbsRel），99.2% 的像素误差在 1.25 倍以内，三个通道几乎完全一致，离上限（原 VAE 直接编解码深度图，1.3%）已经不远。同一方法在 H3 生成的漫游视频 A 上 AbsRel 为 0.051、δ1 0.987：这段视频分辨率是 TartanAir 的 3.4 倍、内容更多变，单层线性编辑的拟合度低一些（R² 0.876），误差大约翻倍。关键在编码器输出层：只看当前位置时线性拟合不够（马赛克、纹理串进深度），用上原 <code>conv_out</code> 本来的 3×3×3 邻域后误差降到三分之一。这是对单段视频的过拟合，泛化到其他视频还没有测试。</div>
+    </section>
+
+
+    <section id="d-improve">
+      <h2>改进：把闭式编辑做深（任务 3）</h2>
+      <p class="method">仍然完全免训练：每一层都只是“用原模型跑一遍、记下这一层的输入和希望它输出的东西、解一次带正则的最小二乘、把解写进这一层的权重”。和第一版相比，多了三件事。</p>
+      <ul class="steps method">
+        <li><b>数值和对齐修正</b> Gram 矩阵全程 fp64 累加（并且不在 fp16 自动混合精度里算，第一次实现就因为它溢出过）；最后一段编码里只看到重复补帧、最终被官方流程丢掉的 latent 不参与拟合；编码器输出层直接在官方切块拼接之后的特征上拟合（卷积和拼接都是线性的，所以这样拟合的就是官方输出本身）；解码头按官方的切块拼接权重和分段交叉淡化权重加权，被丢弃的子帧不参与。</li>
+        <li><b>编码器逐层对齐</b> 原编码器处理深度图时，每一层都有一组“标准答案”激活。从 /8 尺度的下采样卷积开始，到最后一个残差块，依次把 6 层卷积改写成：看到 RGB 时，输出尽量等于看到深度图时的激活（每层一次最小二乘，用前面已改好的层的真实输出做输入）。最后一层后面紧跟组归一化，它会抹掉每组的整体尺度和偏移，所以这一层只要求“归一化之后”一致。等于借用原网络自带的非线性，在 RGB 和深度之间多叠了几层线性映射。</li>
+        <li><b>解码器逐层对齐</b> 同样的思路用在解码器第 30–35 块：原解码器解码 z<sub>D</sub> 时每一块的残差流是标准答案，改写每块注意力和前馈网络的输出投影，让输入 latent 有误差时，残差流也尽量回到标准答案（保留原来的 LayerScale，按下一层归一化看到的尺度加权）。最后再解输出头。</li>
+        <li><b>两项自检</b> 把深度图本身当输入走完整个流程：每层拟合 R² 都是 1.000，编码器改完后的结果和原 VAE 编解码深度图完全一样（0.0132）。再把解码器 4 个投影层的权重故意乘 0.5（误差升到 0.034），逐层求解后恢复到 0.0132。说明切块、分段、帧对应和求解公式都是对的。</li>
+      </ul>
+      <div class="tbl"><table id="t3-table">
+        <tr><th>TartanAir office（同一段上求解和评估）</th><th>改写的层</th><th>AbsRel</th><th>δ&lt;1.05</th><th>深度图像 PSNR</th></tr>
+        <tr><td>第一版：编辑 1 + 2</td><td>2</td><td class="num">0.024</td><td class="num">92.0%</td><td class="num">39.3 dB</td></tr>
+        <tr><td>同样两层，加数值和对齐修正</td><td>2</td><td class="num">0.0175</td><td class="num">96.4%</td><td class="num">42.2 dB</td></tr>
+        <tr><td>+ 编码器 1 层卷积（最后一个残差块）</td><td>3</td><td class="num">0.0128</td><td class="num">97.7%</td><td class="num">45.1 dB</td></tr>
+        <tr><td>+ 编码器 3 层（第 5 级两个残差块，含 512→1024 的捷径卷积）</td><td>5</td><td class="num">0.0119</td><td class="num">97.9%</td><td class="num">45.8 dB</td></tr>
+        <tr><td>+ 编码器 5 层（再加第 4 级两个残差块）</td><td>7</td><td class="num">0.0106</td><td class="num">98.1%</td><td class="num">47.0 dB</td></tr>
+        <tr><td>+ 编码器 6 层（再加 /8 尺度的下采样卷积）</td><td>8</td><td class="num">0.0102</td><td class="num">98.2%</td><td class="num">47.7 dB</td></tr>
+        <tr><td>同上，输出层按拼接后特征拟合 + 组归一化目标</td><td>8</td><td class="num">0.0099</td><td class="num">98.2%</td><td class="num">47.9 dB</td></tr>
+        <tr><td>只改解码器 6 块（12 个投影层），编码器同第二行</td><td>14</td><td class="num">0.0098</td><td class="num">98.1%</td><td class="num">47.8 dB</td></tr>
+        <tr><td><b>最终：编码器 6 层 + 解码器 6 块</b></td><td>20</td><td class="num hl">0.0081</td><td class="num hl">98.3%</td><td class="num hl">50.0 dB</td></tr>
+        <tr><td>参照：原 VAE 直接编解码深度图</td><td>0</td><td class="num">0.0132</td><td class="num">98.2%</td><td class="num">45.5 dB</td></tr>
+        <tr><td>参照：latent 完全正确，只重解输出头（下限）</td><td>1</td><td class="num">0.0070</td><td class="num">98.4%</td><td class="num">51.6 dB</td></tr>
+      </table></div>
+      <p class="method">“改写的层”数的是被重新求解的线性层（卷积或投影），不含被设成恒等的 quant_conv。所有数字都走官方编解码流程，与 VGGT-Ω 深度比；这里求解和评估用的是同一段视频，所以是拟合能力，不是泛化能力（泛化见下一节）。</p>
+      <div class="tbl"><table>
+        <tr><th>同一套最终方法，分别在两段视频上求解</th><th>AbsRel</th><th>δ&lt;1.05</th><th>深度图像 PSNR</th><th>3D 点误差（平均）</th><th>Chamfer</th></tr>
+        <tr><td>TartanAir office：第一版</td><td class="num">0.024</td><td class="num">92.0%</td><td class="num">39.3 dB</td><td class="num">2.5%</td><td class="num">1.2%</td></tr>
+        <tr><td>TartanAir office：最终版</td><td class="num hl">0.0081</td><td class="num hl">98.3%</td><td class="num hl">50.0 dB</td><td class="num hl">0.50%</td><td class="num hl">0.40%</td></tr>
+        <tr><td>漫游视频 A：第一版</td><td class="num">0.051</td><td class="num">61.7%</td><td class="num">29.9 dB</td><td class="num">5.2%</td><td class="num">1.7%</td></tr>
+        <tr><td>漫游视频 A：最终版</td><td class="num hl">0.0118</td><td class="num hl">97.2%</td><td class="num hl">43.1 dB</td><td class="num hl">1.07%</td><td class="num hl">0.54%</td></tr>
+        <tr><td>参照：原 VAE 直接编解码漫游 A 的深度图</td><td class="num">0.0102</td><td class="num">98.5%</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+      </table></div>
+      <p class="method">3D 点误差和 Chamfer 都以这段视频的中位深度为单位，做法见下面的点云一节。</p>
+      <h3>直接换一段没见过的室内视频：office P003</h3>
+      <p class="method">把只在 office P000 上求解得到的权重原封不动，直接用在同一个环境的另一条轨迹 P003 上（124 帧，完全没参与求解）。读出深度用 P000 求解时的深度范围，不用 P003 自己的任何深度统计；评估时每段乘一个尺度对齐中位数（单目深度的常用做法）。可视化在下面“三栏并排与点云”一节的 P003 组，可以切换三套权重。</p>
+      <div class="tbl"><table>
+        <tr><th>与 VGGT-Ω 比</th><th>在 P000 上（求解用的那段）</th><th colspan="4">在 P003 上（没见过，对齐中位数后）</th></tr>
+        <tr><th></th><th>AbsRel</th><th>AbsRel</th><th>δ1</th><th>3D 点误差（平均）</th><th>Chamfer</th></tr>
+        <tr><td>只在 P000 上求解：第一版</td><td class="num">0.024</td><td class="num">0.42</td><td class="num">0.24</td><td class="num">53%</td><td class="num">22%</td></tr>
+        <tr><td>只在 P000 上求解：最终版</td><td class="num">0.0081</td><td class="num">0.37</td><td class="num">0.29</td><td class="num">48%</td><td class="num">20%</td></tr>
+        <tr><td>参照：43 段联合求解（编辑 1+2）</td><td class="num">0.20</td><td class="num">0.25</td><td class="num">0.50</td><td class="num">33%</td><td class="num">12%</td></tr>
+        <tr><td>参照：整段都猜中位深度</td><td class="num">—</td><td class="num">0.52</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+      </table></div>
+      <div class="note"><b>结论</b> 在 P000 上近乎完美的权重，换到同一栋楼里的另一条轨迹就基本失效：AbsRel 从 0.008 变成 0.37，点云平均误差约一半中位深度。输出是一张平滑但几乎没有结构的深度图（走廊左侧的纵深完全没出来），说明单段求解学到的是“P000 这段画面长什么样 → 深度是多少”的对应，而不是可迁移的深度估计。43 段联合求解能出大致的左远右近，但满是 16×16 的方块。</div>
+      <div class="note" id="t3-note"><b>结论</b> 每多对齐一层，误差都继续下降，编码器和解码器两边的改动可以叠加。最终版在 TartanAir 上把 AbsRel 从 0.024 降到 0.0081，误差 5% 以内的像素从 92.0% 升到 98.3%，好于原 VAE 直接编解码深度图（0.0132），接近“latent 完全正确”的下限（0.0070）；点云的平均点误差从 2.5% 降到 0.5%。漫游视频 A 的提升更大：AbsRel 从 0.051 降到 0.0118，误差 5% 以内的像素从 62% 升到 97%，原来明显的 16×16 方块纹理大幅减弱（左侧墙面仍隐约可见）。这些都是在求解用的同一段视频上测的，下一节看它们能不能推广到别的视频。</div>
+    </section>
+
+    <section id="d-general">
+      <h2>多段 TartanAir 一起求解：泛化测试（任务 4）</h2>
+      <p class="method">上面的数字都是“在同一段上求解、同一段上评估”。这一节把许多段视频的统计量加在一起，一次求出一套权重，然后在没参与求解的视频上测。</p>
+      <ul class="steps method">
+        <li><b>数据</b> TartanAir 室内环境的 59 段视频，每段 124 帧（640×480），各自跑一遍 VGGT-Ω 得到目标深度。按轨迹划分，同一条轨迹只出现在一组里。</li>
+        <li><b>求解用</b> 43 段：office、office2、hospital 三个环境的 Easy 和 Hard 轨迹（长轨迹再取一段从第 600 帧开始的）。</li>
+        <li><b>选正则强度用</b> 6 段：同样三个环境里另外的轨迹。每一层的正则强度都按它们上的残差选，不看测试集。</li>
+        <li><b>测试</b> 同环境但没见过的轨迹 6 段（沿用 4D 项目划分里留出的轨迹），以及完全没见过的环境 carwelding 4 段。</li>
+        <li><b>深度范围</b> 所有段共用一个全局 log 深度范围（求解集 VGGT 深度的 0.5%–99.5% 分位，0.062–3.39），不使用测试视频自己的深度统计。评估同时给出原始误差和“每段乘一个尺度对齐中位数”之后的误差（单目深度的常用做法，因为 VGGT-Ω 的深度尺度本身是每段归一化的）。</li>
+      </ul>
+      <div class="tbl"><table id="t4-table">
+        <tr><th>对齐中位数后的 AbsRel（越小越好）</th><th>求解集（抽 4 段）</th><th>选参集（6 段）</th><th>同环境新轨迹（6 段）</th><th>新环境 carwelding（4 段）</th></tr>
+        <tr><td>参照：整段都猜中位深度</td><td class="num">0.66</td><td class="num">0.55</td><td class="num">0.60</td><td class="num">0.79</td></tr>
+        <tr><td>单段求解的第一版权重（只用 TartanAir office 一段）</td><td class="num">—</td><td class="num">0.55</td><td class="num">0.59</td><td class="num">0.96</td></tr>
+        <tr><td>单段求解的最终版权重（同上，逐层编辑）</td><td class="num">—</td><td class="num">0.53</td><td class="num">0.57</td><td class="num">0.85</td></tr>
+        <tr><td>43 段联合：编辑 1 + 2</td><td class="num hl">0.20</td><td class="num hl">0.30</td><td class="num hl">0.27</td><td class="num hl">0.60</td></tr>
+        <tr><td>43 段联合：编码器逐层（3 层）+ 输出层</td><td class="num">0.22</td><td class="num">0.27</td><td class="num">0.26</td><td class="num">0.68</td></tr>
+        <tr><td>参照：同一段上求解的最终版（见上一节）</td><td class="num">0.008</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+      </table></div>
+      <p class="method">每段先乘一个尺度，让预测深度和 VGGT-Ω 深度的中位数相同，再算 AbsRel。不对齐的原始 AbsRel：43 段联合在四组上分别是 0.21 / 0.33 / 0.43 / 0.80，单段权重在后三组上是 0.88 / 0.96 / 2.67（单段权重的深度尺度在新视频上完全对不上）。δ1（误差在 1.25 倍以内的像素）：43 段联合是 0.61 / 0.46 / 0.35 / 0.24。</p>
+      <p class="method">逐层编辑在联合求解时的情况（选参集上的 R²，越接近 1 越好；它直接由累加的统计量算出，不需要额外解码）：编码器逐层对齐让 latent 的选参集 R² 从 0.52 升到 0.61，有一点泛化收益；解码器逐层对齐的选参集 R² 在所有正则强度下都 ≤ 0，也就是它只能修正求解集上的误差，对没见过的视频没有帮助，所以联合版本不再加解码器这部分。</p>
+      <div class="note" id="t4-note"><b>结论</b> 单段上的好结果基本不能推广。只在一段视频上求解的权重，换到同环境的新轨迹上 AbsRel 0.59，和“整段都猜中位深度”（0.60）差不多，等于没学到可迁移的东西：单段上近乎完美的拟合主要是记住了这段视频。43 段一起求解后，同环境新轨迹降到 0.27，比瞎猜好一半，说明 VAE 编码器特征里确实有一部分可以线性读出的深度信息；但离 VGGT-Ω 还很远（δ1 只有 0.35），换到新环境 carwelding 又退到 0.60。而且联合求解后，连求解集本身也只能做到 0.20（单段时 0.008）：一层线性读出的容量远远不够同时覆盖许多场景。联合求解时再多改几层编码器，在选参集和同环境新轨迹上略好一点（0.30 → 0.27，0.27 → 0.26），在新环境上反而更差（0.60 → 0.68）：多出来的闭式层主要还是在拟合见过的数据分布，并没有学到可迁移的深度估计。</div>
+    </section>
+
+    <section id="d-weightonly">
+      <h2>探索：只用 VGGT-Ω 的权重、不看它的输出（新要求）</h2>
+      <p class="method">上面所有的改法，本质都是拿 VGGT-Ω 在视频上的输出当目标去对齐特征，所以换一段视频就不灵了。新要求是：改 H3 VAE 的参数时，完全不看 VGGT-Ω 的特征或输出（不让它在任何数据上跑），只能参考它的权重；改完之后直接在没见过的片段上推理，深度和点云要接近 VGGT-Ω。仍然免训练。下面先做可行性分析（独立的几组分析，分别从“在 H3 里模拟 VGGT 的层”“两个网络之间只靠权重能建立的连接”“上限论证”“非常规思路”四个角度看），再用一个便宜的实验量化唯一可行路线的上限。</p>
+      <h3>结论：在 H3 VAE 结构不变的前提下做不到</h3>
+      <ul class="steps method">
+        <li><b>信息瓶颈</b> H3 的 latent 每 4 帧 × 16×16 像素只有 24 个数（每帧每块 6 个）；VGGT-Ω 的第一层要读这一块的 768 个像素值。解码器 36 层全部用在把 24 个数还原成 RGB 上，没有余量再跑别的网络。</li>
+        <li><b>深度不够</b> VGGT-Ω 的图像块要经过 24 层图像编码器、24 层单帧注意力、24 层跨帧注意力（共 72 层，宽 1024），再加约 30 层卷积的深度头；H3 解码器只有 36 层。</li>
+        <li><b>看得太窄</b> H3 解码器每次只看 256 像素见方的一块、7 个 latent 帧；VGGT-Ω 每层看整帧、跨帧层看全部帧，多视角几何正是靠后者。</li>
+        <li><b>输出头不同</b> VGGT-Ω 的深度头是多尺度卷积、上采样、逐级融合；H3 只有每个 token 一个线性层直接出 16×16 像素。</li>
+        <li><b>唯一精确的“只靠权重”的连接在像素空间</b> 两边都在 16×16 的 RGB 块上工作、都用 ImageNet 的均值方差归一化，所以“VGGT-Ω 的 patch 嵌入 × H3 的 proj_out”是一个精确的线性映射；除此之外，VGGT 后面每一层都是非线性的，想用它的知识就必须真的执行它的层。权重插值、统计量匹配等做法都不携带逐像素的深度信息。照此估计，硬把 VGGT 塞进 36 层解码器，结果不会比“整段都猜中位深度”好。</li>
+      </ul>
+      <h3>唯一能接近 VGGT-Ω 的路线：把 VGGT-Ω 的权重接在 H3 解码器后面</h3>
+      <p class="method">利用上面那个精确的像素空间连接，把 VGGT-Ω 的全部层接在原版 H3 VAE 后面：不拟合任何东西，不看 VGGT-Ω 的任何输出，构造本身是零样本的；代价是结构变了（多了 11 亿参数），深度能力来自接上去的 VGGT-Ω 权重，而不是改写后的 H3 参数。下表用原版 H3 编解码后的画面跑 VGGT-Ω，与 VGGT-Ω 在原画面上的结果比（深度按中位数对齐，点云用同一套相机），测试片段都没参与过任何求解。</p>
+      <div class="tbl"><table>
+        <tr><th>与 VGGT-Ω（原画面）比</th><th>同环境新轨迹（6 段）</th><th>新环境 carwelding（4 段）</th></tr>
+        <tr><td>H3 编解码后 RGB 的 PSNR</td><td class="num">31.1 dB</td><td class="num">24.0 dB</td></tr>
+        <tr><td>AbsRel（中位数，平均）</td><td class="num hl">0.011（0.027）</td><td class="num hl">0.041（0.041）</td></tr>
+        <tr><td>误差 5% 以内的像素</td><td class="num">97.8%</td><td class="num">85.3%</td></tr>
+        <tr><td>3D 点误差（平均，相对中位深度）</td><td class="num">0.75%</td><td class="num">2.7%</td></tr>
+        <tr><td>Chamfer</td><td class="num">0.50%</td><td class="num">1.2%</td></tr>
+        <tr><td>相机视场角误差</td><td class="num">0.37°</td><td class="num">0.41°</td></tr>
+        <tr><td>对照：43 段联合闭式编辑（AbsRel）</td><td class="num">0.26–0.27</td><td class="num">0.60–0.68</td></tr>
+      </table></div>
+      <p class="method">同环境新轨迹的平均值被 office P003 一段拉高（0.11，但它 98% 的像素误差在 5% 以内，是少数像素的极端误差），所以同时给出中位数。新环境误差更大，原因是 H3 对这类画面的 RGB 重建差（24 dB），VGGT-Ω 对重建误差敏感。</p>
+      <h3>四条要求，没有一条路线能同时满足</h3>
+      <div class="tbl"><table>
+        <tr><th>路线</th><th>H3 VAE 结构不变</th><th>免训练</th><th>不看 VGGT-Ω 的输出</th><th>没见过的片段上 AbsRel（新轨迹 / 新环境）</th></tr>
+        <tr><td>用 VGGT-Ω 输出当目标的闭式编辑（上面几节）</td><td>是</td><td>是</td><td>否</td><td class="num">0.26–0.27 / 0.60–0.68（实测）</td></tr>
+        <tr><td>把 VGGT-Ω 的层编进 36 层解码器</td><td>是</td><td>是</td><td>是</td><td>根本没有深度输出（层数、宽度、输出头都放不下）</td></tr>
+        <tr><td>不用 VGGT：经典多视角几何从 RGB 算深度当目标，再做闭式编辑</td><td>是</td><td>是</td><td>是</td><td class="num">约 0.3 / 0.65（估计）</td></tr>
+        <tr><td>把 VGGT-Ω 接在 H3 解码器后面</td><td>否（多 11 亿参数）</td><td>是</td><td>是</td><td class="num">0.011 / 0.041（实测，中位数）</td></tr>
+        <tr><td>梯度训练（蒸馏）进 H3 VAE</td><td>是</td><td>否</td><td>否</td><td>未做</td></tr>
+      </table></div>
+      <div class="note" id="wo-note"><b>结论</b> 结构不变、免训练、不看 VGGT-Ω 输出这三条同时成立时，做不到接近 VGGT-Ω。VGGT-Ω 的权重只有真正执行才有用，而 H3 VAE 里没有能执行它的地方：能精确搬进来的只有它的 patch 嵌入（占 0.07% 的参数）；就算放弃还原 RGB、把整个解码器让出来，也只能放下 VGGT 主干的一部分，输出深度和相机的两个头都放不下。唯一接近 VGGT-Ω 的路线是把它接在 H3 解码器后面，但那时深度能力全部来自 VGGT-Ω，H3 只负责还原 RGB，和 4D 项目里“VGGT 跑在 H3 解码画面上”是同一件事。严格规则下唯一有意义的实验是干脆不用 VGGT：用经典多视角几何（光流、本质矩阵、三角化）从 RGB 本身算出深度当目标，再做同样的闭式编辑；预计结果和用 VGGT 当目标差不多，说明瓶颈在 H3 VAE 的特征，而不在“老师”是谁。下一步需要决定：接受这个结论，还是放宽某一条规则。</div>
+    </section>
+
+    <section id="d-viz">
+      <h2>三栏并排与点云：RGB · VGGT-Ω · 改后的 H3 VAE</h2>
+      <p class="method">每段视频拆成三栏单独显示：<b>左</b> 输入的 RGB，<b>中</b> VGGT-Ω 预测的深度（目标），<b>右</b> 改过权重的 H3 VAE 直接输出的深度。两种深度用同一套颜色：这段视频自己的 1%–99% 深度范围，近处红、远处蓝。三栏同步播放：拖左边 RGB 的进度条，另外两栏跟着走。</p>
+      <div class="legend"><span>近</span><span class="ramp turbo"></span><span>远</span></div>
+      <div id="vz-groups"></div>
+      <p class="method"><b>点云怎么画</b> 两种深度都用 VGGT-Ω 自己估计的相机（内参和每帧位姿）反投影到同一个世界坐标系，所以两团点云只有深度不同。每段视频均匀取 21 帧，去掉 VGGT-Ω 置信度最低的 20% 像素，再随机取 20 万个点；两边用同一批像素。黄线是 VGGT-Ω 估计的相机轨迹。拖动旋转、滚轮缩放，左右两边视角同步。“按误差着色”只给右边上色：同一像素的两个 3D 点相距多远，以这段视频的中位深度为单位；越亮误差越大，5% 及以上最亮。</p>
+      <div class="tbl"><table id="vz-table">
+        <tr><th>与 VGGT-Ω 比（VGGT 分辨率，全部帧）</th><th>office 第一版</th><th>office 最终版</th><th>漫游 A 第一版</th><th>漫游 A 最终版</th><th>office 新轨迹 P003</th><th>新环境 carwelding</th></tr>
+        <tr><td>怎么求解的</td><td>同段</td><td>同段</td><td>同段</td><td>同段</td><td>43 段联合</td><td>43 段联合</td></tr>
+        <tr><td>深度 AbsRel</td><td class="num">0.024</td><td class="num hl">0.0085</td><td class="num">0.051</td><td class="num hl">0.012</td><td class="num">0.25</td><td class="num">0.53</td></tr>
+        <tr><td>3D 点误差，平均（相对中位深度）</td><td class="num">2.5%</td><td class="num hl">0.50%</td><td class="num">5.2%</td><td class="num hl">1.07%</td><td class="num">33%</td><td class="num">91%</td></tr>
+        <tr><td>3D 点误差，中位数</td><td class="num">1.5%</td><td class="num hl">0.32%</td><td class="num">3.4%</td><td class="num hl">0.63%</td><td class="num">28%</td><td class="num">51%</td></tr>
+        <tr><td>3D 点误差小于 5% 的点</td><td class="num">88.1%</td><td class="num hl">99.9%</td><td class="num">62.6%</td><td class="num hl">98.7%</td><td class="num">10.2%</td><td class="num">5.3%</td></tr>
+        <tr><td>Chamfer 距离（两团点云互找最近点，双向平均）</td><td class="num">1.2%</td><td class="num hl">0.40%</td><td class="num">1.7%</td><td class="num hl">0.54%</td><td class="num">12%</td><td class="num">22%</td></tr>
+      </table></div>
+      <p class="method">点误差按像素一一对应计算：同一像素在两团点云里的 3D 位置之差，除以这段视频的中位深度。Chamfer 距离不要求一一对应：每个点找另一团点云里最近的点，两个方向取平均，衡量的是形状本身差多少。后两列是多段联合求解的权重用在没见过的视频上，深度先按中位数对齐尺度。</p>
+    </section>
+
+    <section id="d-setup">
+      <h2>参照：第一版输入（H3 生成的漫游视频 A 和深度 B）</h2>
+      <ul class="steps method">
+        <li><b>视频 A</b> 原始 H3（T2VA，1344×768，124 帧，seed 7）：相机沿走廊前进，经过挂画和边桌，进入客厅，再右转看到开放式厨房；没有人、动物或任何移动的物体，只有相机在动。</li>
+        <li><b>深度 B</b> VGGT-Ω 一次读入全部 124 帧（288×512），所有帧共用一个尺度。深度图像的编码：u = (log d − log d<sub>1%</sub>) / (log d<sub>99%</sub> − log d<sub>1%</sub>)，截断到 [0, 1] 后复制到 R、G、B 三个通道；d<sub>1%</sub>、d<sub>99%</sub> 是 B 在全片的 1% / 99% 分位数（0.125 / 1.296）。从输出图像读回深度：d = exp(三通道均值 × (log d<sub>99%</sub> − log d<sub>1%</sub>) + log d<sub>1%</sub>)。</li>
+        <li><b>权重副本</b> 复制 H3 的 VAE 目录（5 个文件，sha256 与原始权重全部一致），只在副本上训练。</li>
+      </ul>
+      <div class="grid g2" data-group="dsetup">
+        <figure><video src="videos/walk_A_seed7.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>视频 A</b> · 室内漫游，原始 H3</figcaption></figure>
+        <figure><video src="videos/walk_depth_B_color.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>深度 B</b> · VGGT-Ω（暖色近、冷色远）</figcaption></figure>
+      </div>
+      <div class="bar"><button type="button" data-play="dsetup">同步播放</button><button type="button" data-pause="dsetup">暂停</button></div>
+    </section>
+
+    <section id="d-method">
+      <h2>参照：梯度训练版（不符合“免训练”的要求）</h2>
+      <p class="method">下面是最初误解要求时做的版本：用梯度下降训练 VAE 的编码器和解码器。它不是本实验要求的做法，只作为参照保留；TartanAir 上的这版训练已中途停止。</p>
+      <ul class="steps method">
+        <li><b>结构</b> H3 VAE 的编码器是 3D CNN（1.8 亿参数，每次编码 17 帧 × 256×256 的一块），解码器是 36 层、2048 维的 ViT（24.2 亿参数，每个 latent token 直接展开成 4 帧 × 16×16 像素）。编码和解码都按 256×256 的空间块进行，块之间重叠混合；时间上按 17 帧一段，相邻段交叉淡入。</li>
+        <li><b>严格按官方分块训练</b> 124 帧 × 1344×768 的视频，在空间上分 4×7 块，在时间上分 7 个解码段，共 196 个训练单元。第 i 个解码段用 latent 帧 [5i, 5i+7)，解码出的 28 帧里，第 3–19 帧是视频帧 17i–17i+16，第 23–27 帧是下一段开头的 5 帧（交叉淡入用），两部分都监督。推理时仍走官方的完整编解码流程，所以训练和推理一致。</li>
+        <li><b>三个阶段</b> ① 编码器不动，在原编码器的官方 latent 上训练解码器；② 编码器和解码器端到端一起训练：每个单元重新编码它对应的两段 17 帧画面块，按官方方式拼成 7 个 latent 帧再解码；③ 用改后编码器的官方 latent 再训练一次解码器，对齐推理时真正的输入。损失：解码出的三通道图像与目标深度图像的 L1。</li>
+        <li><b>保存</b> 改后的 VAE 存成一个完整目录，可以直接用官方 diffusers 接口加载。</li>
+      </ul>
+    </section>
+
+    <section id="d-result">
+      <h2>参照：梯度训练版在漫游视频上的结果</h2>
+      <div class="grid g2" data-group="dwalk">
+        <figure><video src="videos/walk_A_B_H3vae_side_by_side.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>左</b> 视频 A　<b>中</b> VGGT-Ω 深度 B　<b>右</b> 改后的 H3 VAE 直接输出的深度</figcaption></figure>
+        <figure><video src="videos/walk_depth_H3vae_color.mp4" controls muted loop playsinline preload="metadata"></video><figcaption><b>改后的 H3 VAE 输出</b> · 全分辨率 1344×768</figcaption></figure>
+      </div>
+      <div class="bar"><button type="button" data-play="dwalk">同步播放</button><button type="button" data-pause="dwalk">暂停</button></div>
+      <div class="tbl"><table>
+        <tr><th>官方编解码流程，与深度 B 比</th><th>AbsRel</th><th>δ1</th><th>误差 &lt;5% 的像素</th><th>深度图像 PSNR</th><th>三通道差异</th></tr>
+        <tr><td>原始 VAE（重建的是 RGB，只作起点参照）</td><td class="num">0.453</td><td class="num">0.231</td><td class="num">4.2%</td><td class="num">10.7 dB</td><td class="num">0.059</td></tr>
+        <tr><td>① 只训练解码器后（10 分钟）</td><td class="num">0.026</td><td class="num">0.992</td><td class="num">89.3%</td><td class="num">32.1 dB</td><td class="num">0.002</td></tr>
+        <tr><td>①②③ 编码器 + 解码器都改过（共 30 分钟）</td><td class="num hl">0.022</td><td class="num hl">0.994</td><td class="num hl">91.9%</td><td class="num hl">33.9 dB</td><td class="num">0.002</td></tr>
+      </table></div>
+      <p class="method">评估：视频 A 走官方的完整编解码流程（编码取后验均值，按官方方式分块、混合），输出三通道的均值读回深度，与上采样到 1344×768 的深度 B 逐像素比较（在 VGGT-Ω 的 288×512 分辨率上比，结果几乎相同）。AbsRel = |预测 − B| / B 的平均；δ1 = 误差在 1.25 倍以内的像素比例。</p>
+      <div class="note"><b>结论</b> 只改 VAE 的编码器和解码器，就能让 H3 VAE 把这段视频直接“解码”成深度，与 VGGT-Ω 的深度 B 只差 2.2%（AbsRel），99.4% 的像素误差在 1.25 倍以内，三个通道几乎完全一致。大部分能力在只训练解码器时就已获得；加上编码器的端到端训练后还有小幅提升。注意这是对单段视频的过拟合。</div>
+    </section>
+
+
+
+    <section id="d-log">
+      <h2>开发日志</h2>
+      <ol class="log">
+        <li><time>22:12</time>编码漫游提示词，开始用原始 H3 生成视频 A（seed 7）；后台复制 VAE 权重。</li>
+        <li><time>22:24</time>视频 A 完成：走廊 → 客厅 → 右转到厨房，场景静止。</li>
+        <li><time>22:26</time>VGGT-Ω 深度 B 完成（124 帧共用一个尺度）；VAE 副本 sha256 全部一致；开始训练。原始 VAE 直接重建 RGB 时，读成深度的 AbsRel 为 0.45（参照起点）。</li>
+        <li><time>22:37</time>第一阶段（只训练解码器，10 分钟）后：AbsRel 0.026，δ1 0.992。</li>
+        <li><time>22:56</time>三个阶段完成（共 30 分钟）：AbsRel 0.022，δ1 0.994，深度图像 PSNR 33.9 dB；改后的 VAE 存为完整目录。</li>
+        <li><time>22:58</time>按讨论改用 TartanAir 室内视频（office / Easy / P000，124 帧）作为输入，目标是 VGGT-Ω 在它上面的深度预测；第一版结果保留。</li>
+        <li><time>22:59</time>VGGT-Ω 深度完成，开始在 VAE 副本上训练。</li>
+        <li><time>23:14</time>澄清要求：免训练、直接修改权重，而不是训练。停止 TartanAir 上的梯度训练（已跑到第二阶段第 400 步）。</li>
+        <li><time>23:17</time>免训练闭式编辑第一版（编辑 1 只用当前位置特征）：AbsRel 0.063，有马赛克和纹理串扰。</li>
+        <li><time>23:21</time>编辑 1 改用 3×3×3 邻域特征（原 conv_out 的感受野）：AbsRel 0.024，δ1 0.992，与 VGGT-Ω 深度在画面上几乎看不出差别；改后的 VAE 存为完整目录。</li>
+        <li><time>23:29</time>同一免训练方法用在 H3 生成的漫游视频 A 上（最初设定的输入）：AbsRel 0.051，δ1 0.987。</li>
+        <li><time>11-04 01:00</time>新增三栏并排（RGB / VGGT-Ω / 改后的 VAE，同步播放）和点云对比（两种深度都用 VGGT-Ω 的相机反投影）。点误差平均 2.5%（TartanAir）/ 5.2%（漫游 A），Chamfer 1.2% / 1.7%。漫游 A 的输出能看到 16×16 的方块纹理，列为下一步改进的目标之一。</li>
+        <li><time>11-04 01:40</time>写好逐层闭式编辑脚本（编码器对齐原编码器处理深度图时的激活，解码器对齐原解码器解码 z<sub>D</sub> 时的残差流）。第一次运行发现 Gram 矩阵在 fp16 自动混合精度里累加溢出，改为 fp64 并关闭自动混合精度后正常。</li>
+        <li><time>11-04 02:05</time>两项自检通过：深度图当输入时每层 R² = 1.000，结果等于原 VAE 编解码深度图（0.0132）；把解码器 4 个投影层乘 0.5 后逐层求解，恢复到 0.0132。</li>
+        <li><time>11-04 02:20</time>TartanAir 阶梯实验：只做数值和对齐修正 0.0175；加编码器 6 层 0.0102；只加解码器 6 块 0.0098；两者结合 0.0081（下限 0.0070）。</li>
+        <li><time>11-04 02:40</time>同一方法在漫游视频 A 上：AbsRel 0.051 → 0.0118，δ&lt;1.05 62% → 97%，点云平均误差 5.2% → 1.1%。三栏和点云加上“第一版 / 最终版”切换。</li>
+        <li><time>11-04 02:51</time>任务 4：TartanAir 59 段（43 段求解、6 段选参、6 段同环境新轨迹、4 段新环境 carwelding）。43 段联合（编辑 1+2）对齐后 AbsRel：求解集 0.20、新轨迹 0.27、新环境 0.60；单段权重在新轨迹上 0.59，与猜中位深度（0.60）相当。按要求不再测漫游视频。更深的联合版本（编码器 3 层 + 解码器 2 块）运行中。</li>
+        <li><time>11-04 03:15</time>把只在 office P000 上求解的权重直接用在 office P003（没见过）：第一版 AbsRel 0.42、最终版 0.37（对齐中位数后），输出平滑但没有结构；43 段联合版本 0.25。联合求解的逐层版本：编码器部分让选参集 R² 0.52 → 0.61，解码器部分的选参集 R² ≤ 0（不能泛化），编码器部分的完整评估运行中。</li>
+        <li><time>11-04 09:29</time>联合求解的编码器逐层版本跑完：求解集 0.22、选参集 0.27、同环境新轨迹 0.26、新环境 0.68（编辑 1+2 是 0.20 / 0.30 / 0.27 / 0.60），没有真正提升泛化。下一步按新要求探索“只用 VGGT-Ω 的权重、不看它的特征”的可泛化改法，先做可行性分析。</li>
+        <li><time>11-04 10:16</time>可行性分析完成（四组独立分析加汇总，其中一轮因网络中断重跑）：结构不变时无法只靠权重把 VGGT-Ω 的深度能力搬进 H3 VAE。实测唯一接近的路线（VGGT-Ω 接在原版 H3 解码器后面）：没见过的新轨迹 AbsRel 中位数 0.011、新环境 0.041，点云误差 0.75% / 2.7%，但这要改结构。</li>
+      </ol>
+    </section>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  /* experiment 2: one block per clip = three synced panels + the two-view point cloud; versions switch both */
+  var VZ = [
+    { id: 'office', title: 'TartanAir office（640×480，124 帧）· 在这一段上求解', ratio: 'r43', def: 1,
+      versions: [{ dir: 'viz/tartan_office_v1', label: '第一版：编辑 1+2' }, { dir: 'viz/tartan_office_v2', label: '最终：逐层编辑' }] },
+    { id: 'walk', title: 'H3 生成的漫游视频 A（1344×768，124 帧；显示半分辨率）', ratio: 'r74', def: 1,
+      versions: [{ dir: 'viz/walk_v1', label: '第一版：编辑 1+2' }, { dir: 'viz/walk_v2', label: '最终：逐层编辑' }] },
+    { id: 't4office', title: 'TartanAir office 的新轨迹 P003 · 没参与任何求解 · 深度按中位数对齐', ratio: 'r43', def: 1,
+      versions: [{ dir: 'viz/zs_office_P003_v1', label: '只在 P000 上求解：第一版' }, { dir: 'viz/zs_office_P003_v2', label: '只在 P000 上求解：最终版' },
+                 { dir: 'viz/t4_office_P003', label: '43 段联合求解' }] },
+    { id: 't4car', title: '新环境 carwelding P001 · 43 段联合求解（编辑 1+2），没见过这个环境 · 深度按中位数对齐', ratio: 'r43',
+      versions: [{ dir: 'viz/t4_carwelding_P001', label: '多段联合' }] }
+  ];
+  window.VZ_GROUPS = VZ;
+  var host = document.getElementById('vz-groups');
+  if (!host) return;
+  VZ.forEach(function (g) {
+    var v0 = g.versions[g.def != null ? g.def : g.versions.length - 1];
+    var vers = g.versions.length > 1 ? '<div class="bar" data-vers="' + g.id + '"><span>版本</span>' + g.versions.map(function (v, i) {
+      return '<button type="button" data-ver="' + i + '" aria-pressed="' + (v === v0) + '">' + v.label + '</button>';
+    }).join('') + '</div>' : '';
+    var fig = function (file, cap, ctl) {
+      return '<figure><video class="' + g.ratio + '" data-file="' + file + '" src="' + v0.dir + '/' + file + '"' + (ctl ? ' controls' : '') +
+        ' muted loop playsinline preload="metadata"></video><figcaption>' + cap + '</figcaption></figure>';
+    };
+    host.insertAdjacentHTML('beforeend',
+      '<h3>' + g.title + '</h3>' + vers +
+      '<div class="tri" data-group="vz-' + g.id + '" data-sync>' +
+        fig('rgb.mp4', '<b>RGB 输入</b>', true) + fig('vggt.mp4', '<b>VGGT-Ω 深度</b> · 目标', false) +
+        fig('vae.mp4', '<b>改后的 H3 VAE</b> · 直接输出', false) + '</div>' +
+      '<div class="bar"><button type="button" data-play="vz-' + g.id + '">同步播放</button><button type="button" data-pause="vz-' + g.id + '">暂停</button></div>' +
+      '<div class="pcwrap" data-pcgroup="' + g.id + '"><div class="pc" data-pc="' + v0.dir + '"><canvas></canvas>' +
+        '<span class="lab a">VGGT-Ω</span><span class="lab b">改后的 H3 VAE</span><div class="pc-msg">滚动到这里时加载点云</div></div>' +
+        '<div class="bar pcbar"><button type="button" data-pc-mode="rgb" aria-pressed="true">原色</button>' +
+        '<button type="button" data-pc-mode="err" aria-pressed="false">按误差着色</button><button type="button" data-pc-reset>重置视角</button>' +
+        '<label>点大小 <input type="range" min="2" max="16" value="6" data-pc-size></label>' +
+        '<span class="legend"><span>误差 0</span><span class="ramp err"></span><span>≥5%</span></span></div></div>');
+  });
+})();
+</script>
+<script>
+(function () {
+  function show(t) {
+    document.querySelectorAll('.page').forEach(function (p) { p.hidden = p.id !== 'page-' + t; });
+    document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', b.getAttribute('data-tab') === t ? 'true' : 'false'); });
+    document.querySelectorAll('video').forEach(function (v) { v.pause(); });
+  }
+  document.querySelectorAll('#tabs button').forEach(function (b) {
+    b.addEventListener('click', function () { show(b.getAttribute('data-tab')); try { history.replaceState(null, '', '#' + b.getAttribute('data-tab')); } catch (e) {} });
+  });
+  var h = (location.hash || '').replace('#', '');
+  show(h === 'depth' ? 'depth' : 'edit');
+  function vids(g) { return Array.prototype.slice.call(document.querySelectorAll('[data-group="' + g + '"] video')); }
+  document.querySelectorAll('[data-play]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var vs = vids(b.getAttribute('data-play'));
+      vs.forEach(function (v) { v.pause(); v.currentTime = 0; });
+      vs.forEach(function (v) { var p = v.play(); if (p && p.catch) p.catch(function () {}); });
+    });
+  });
+  document.querySelectorAll('[data-pause]').forEach(function (b) {
+    b.addEventListener('click', function () { vids(b.getAttribute('data-pause')).forEach(function (v) { v.pause(); }); });
+  });
+  /* synced panels: the first video (with controls) leads, the others follow */
+  document.querySelectorAll('[data-sync]').forEach(function (g) {
+    var vs = Array.prototype.slice.call(g.querySelectorAll('video')), lead = vs[0], rest = vs.slice(1);
+    function follow(play) {
+      rest.forEach(function (v) {
+        if (Math.abs(v.currentTime - lead.currentTime) > 0.08) v.currentTime = lead.currentTime;
+        if (play) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
+      });
+    }
+    lead.addEventListener('play', function () { follow(true); });
+    lead.addEventListener('pause', function () { rest.forEach(function (v) { v.pause(); }); });
+    lead.addEventListener('seeked', function () { follow(false); });
+    lead.addEventListener('timeupdate', function () {
+      rest.forEach(function (v) { if (Math.abs(v.currentTime - lead.currentTime) > 0.15) v.currentTime = lead.currentTime; });
+    });
+  });
+
+  /* two-view point cloud: VGGT-Omega (left/top) vs the edited H3 VAE (right/bottom), one shared orbit camera */
+  var GL = typeof THREE !== 'undefined' && !!THREE.OrbitControls;
+  function tok(n, fb) { var v = getComputedStyle(document.documentElement).getPropertyValue(n).trim(); return v || fb; }
+  var STOPS = [[0, 0.30, 0.27, 0.25], [0.35, 0.62, 0.30, 0.10], [0.7, 0.93, 0.55, 0.18], [1, 1.0, 0.86, 0.55]];   /* dark stage: larger error = brighter */
+  function ramp(t, out, o) {
+    for (var i = 1; i < STOPS.length; i++) {
+      if (t <= STOPS[i][0] || i === STOPS.length - 1) {
+        var a = STOPS[i - 1], b = STOPS[i], s = Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0])));
+        out[o] = a[1] + (b[1] - a[1]) * s; out[o + 1] = a[2] + (b[2] - a[2]) * s; out[o + 2] = a[3] + (b[3] - a[3]) * s;
+        return;
+      }
+    }
+  }
+  function Viewer(box) { this.box = box; this.canvas = box.querySelector('canvas'); this.msg = box.querySelector('.pc-msg'); this.mode = 'rgb'; this.size = 0.006; }
+  Viewer.prototype.load = function (base) {
+    var self = this;
+    if (!GL) { this.msg.hidden = false; this.msg.textContent = '三维查看器的脚本没有加载成功，无法显示点云。'; return; }
+    if (this.base === base) return;
+    this.base = base; this.msg.hidden = false; this.msg.textContent = '正在加载点云…';
+    Promise.all([
+      fetch(base + '/pc.json').then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
+      fetch(base + '/pc.b64.txt').then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); }).then(function (t) {
+        var bin = atob(t.trim()), u8 = new Uint8Array(bin.length);
+        for (var j = 0; j < bin.length; j++) u8[j] = bin.charCodeAt(j);
+        return u8.buffer;
+      })
+    ]).then(function (res) { if (self.base === base) self.build(res[0], res[1]); })
+      .catch(function () { self.msg.textContent = '点云数据加载失败。'; });
+  };
+  Viewer.prototype.build = function (man, buf) {
+    var self = this, n = man.n, k, i;
+    var qB = new Int16Array(buf, 0, n * 3), qV = new Int16Array(buf, n * 6, n * 3), rgb = new Uint8Array(buf, n * 12, n * 3);
+    var pB = new Float32Array(n * 3), pV = new Float32Array(n * 3), err = new Float32Array(n * 3), md = man.median_depth_units;
+    for (i = 0; i < n * 3; i++) { pB[i] = qB[i] * (2 / 32767); pV[i] = qV[i] * (2 / 32767); }
+    for (k = 0; k < n; k++) {
+      var dx = pV[3 * k] - pB[3 * k], dy = pV[3 * k + 1] - pB[3 * k + 1], dz = pV[3 * k + 2] - pB[3 * k + 2];
+      ramp(Math.min(Math.sqrt(dx * dx + dy * dy + dz * dz) / md / 0.05, 1), err, 3 * k);
+    }
+    if (!this.renderer) {
+      this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      this.renderer.setScissorTest(true);
+      this.cam = new THREE.PerspectiveCamera(55, 1, 0.005, 50);
+      this.cam.up.set(0, -1, 0);                                  /* OpenCV world: y points down */
+      this.controls = new THREE.OrbitControls(this.cam, this.canvas);
+      this.controls.addEventListener('change', function () { self.render(); });
+      if (window.ResizeObserver) new ResizeObserver(function () { self.layout(); }).observe(this.box);
+      window.addEventListener('resize', function () { self.layout(); });
+    }
+    var rgbAttr = new THREE.BufferAttribute(rgb, 3, true);
+    var gB = new THREE.BufferGeometry(), gV = new THREE.BufferGeometry();
+    gB.setAttribute('position', new THREE.BufferAttribute(pB, 3)); gB.setAttribute('color', rgbAttr);
+    gV.setAttribute('position', new THREE.BufferAttribute(pV, 3)); gV.setAttribute('color', rgbAttr);
+    this.gV = gV; this.rgbAttr = rgbAttr; this.errAttr = new THREE.BufferAttribute(err, 3);
+    this.matB = new THREE.PointsMaterial({ size: this.size, vertexColors: true });
+    this.matV = new THREE.PointsMaterial({ size: this.size, vertexColors: true });
+    this.sceneB = new THREE.Scene(); this.sceneV = new THREE.Scene();
+    this.sceneB.add(new THREE.Points(gB, this.matB)); this.sceneV.add(new THREE.Points(gV, this.matV));
+    var cp = new Float32Array(man.cams.length * 3);
+    man.cams.forEach(function (c, j) { cp[3 * j] = c[0]; cp[3 * j + 1] = c[1]; cp[3 * j + 2] = c[2]; });
+    var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(cp, 3));
+    var lm = new THREE.LineBasicMaterial({ color: new THREE.Color(tok('--pc-path', '#e2a54d')) });
+    this.sceneB.add(new THREE.Line(lg, lm)); this.sceneV.add(new THREE.Line(lg, lm));
+    this.home = man.cams[0];
+    this.msg.hidden = true;
+    this.setMode(this.mode); this.reset(); this.layout();
+  };
+  Viewer.prototype.reset = function () {
+    if (!this.cam || !this.home) return;
+    var c = this.home;
+    this.cam.position.set(c[0], c[1] - 0.7, c[2] - 1.0);            /* above and behind the first camera */
+    this.controls.target.set(0, 0, 0); this.controls.update(); this.render();
+  };
+  Viewer.prototype.setMode = function (m) { this.mode = m; if (this.gV) this.gV.setAttribute('color', m === 'err' ? this.errAttr : this.rgbAttr); this.render(); };
+  Viewer.prototype.setSize = function (v) { this.size = v; if (this.matB) { this.matB.size = v; this.matV.size = v; } this.render(); };
+  Viewer.prototype.layout = function () {
+    if (!this.renderer) return;
+    var w = this.box.clientWidth;
+    this.stack = w < 600; this.box.classList.toggle('stack', this.stack);
+    var h = this.box.clientHeight;
+    if (!w || !h) return;
+    this.renderer.setSize(w, h, false);
+    this.cam.aspect = this.stack ? w / (h / 2) : (w / 2) / h; this.cam.updateProjectionMatrix(); this.render();
+  };
+  Viewer.prototype.render = function () {
+    if (!this.renderer || !this.sceneB) return;
+    var r = this.renderer, w = this.box.clientWidth, h = this.box.clientHeight;
+    if (!w || !h) return;
+    r.setClearColor(new THREE.Color(tok('--pc-bg', '#1f2226')));
+    if (this.stack) {
+      r.setViewport(0, h / 2, w, h / 2); r.setScissor(0, h / 2, w, h / 2); r.render(this.sceneB, this.cam);
+      r.setViewport(0, 0, w, h / 2); r.setScissor(0, 0, w, h / 2); r.render(this.sceneV, this.cam);
+    } else {
+      r.setViewport(0, 0, w / 2, h); r.setScissor(0, 0, w / 2, h); r.render(this.sceneB, this.cam);
+      r.setViewport(w / 2, 0, w / 2, h); r.setScissor(w / 2, 0, w / 2, h); r.render(this.sceneV, this.cam);
+    }
+  };
+  var viewers = {};
+  document.querySelectorAll('.pcwrap').forEach(function (wrap) {
+    var box = wrap.querySelector('.pc'), v = new Viewer(box);
+    viewers[wrap.getAttribute('data-pcgroup')] = v;
+    wrap.querySelectorAll('[data-pc-mode]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        wrap.querySelectorAll('[data-pc-mode]').forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+        v.setMode(b.getAttribute('data-pc-mode'));
+      });
+    });
+    wrap.querySelector('[data-pc-reset]').addEventListener('click', function () { v.reset(); });
+    wrap.querySelector('[data-pc-size]').addEventListener('input', function (e) { v.setSize(Number(e.target.value) / 1000); });
+    if (window.IntersectionObserver) {
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (en) { if (en.isIntersecting) { v.load(box.getAttribute('data-pc')); v.layout(); } });
+      }, { rootMargin: '200px' });
+      io.observe(box);
+    } else { v.load(box.getAttribute('data-pc')); }
+  });
+  /* version buttons: switch the three panels and the point cloud together */
+  (window.VZ_GROUPS || []).forEach(function (g) {
+    var bar = document.querySelector('[data-vers="' + g.id + '"]');
+    if (!bar) return;
+    bar.querySelectorAll('[data-ver]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var ver = g.versions[Number(b.getAttribute('data-ver'))];
+        bar.querySelectorAll('[data-ver]').forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+        document.querySelectorAll('[data-group="vz-' + g.id + '"] video').forEach(function (vid) {
+          vid.pause(); vid.src = ver.dir + '/' + vid.getAttribute('data-file'); vid.load();
+        });
+        var box = document.querySelector('[data-pcgroup="' + g.id + '"] .pc');
+        box.setAttribute('data-pc', ver.dir);
+        viewers[g.id].load(ver.dir);
+      });
+    });
+  });
+  var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  if (mq && mq.addEventListener) mq.addEventListener('change', function () { Object.keys(viewers).forEach(function (k) { viewers[k].render(); }); });
+})();
+</script>
+</body>
+</html>
